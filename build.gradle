@@ -1,0 +1,5 @@
+// 顶层构建脚本：只声明插件版本，具体配置在 app/build.gradle
+// 版本矩阵是实测存在且相互兼容的组合：Gradle 8.7 + AGP 8.5.2 + JDK 17 + compileSdk 34
+plugins {
+  id 'com.android.application' version '8.5.2' apply false
+}

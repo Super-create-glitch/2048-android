@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="2048">
+<title>2048</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(1100px 700px at 50% -10%,#1e293b 0%,#0b1220 60%);
+  font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  color:#e2e8f0;min-height:100vh;min-height:100dvh;padding:16px;
+  -webkit-tap-highlight-color:transparent;
+  /* 手机端：禁掉下拉刷新/橡皮筋、长按菜单、双击缩放 */
+  overscroll-behavior:none;touch-action:manipulation;
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+  -webkit-text-size-adjust:100%;
+  /* 刘海屏安全区（不支持 env() 的浏览器沿用上面的 16px） */
+  padding-top:max(16px, env(safe-area-inset-top));
+  padding-right:max(16px, env(safe-area-inset-right));
+  padding-bottom:max(16px, env(safe-area-inset-bottom));
+  padding-left:max(16px, env(safe-area-inset-left));
+}
+.app{width:100%;max-width:460px;display:flex;flex-direction:column;align-items:center}
+header{width:100%;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}
+h1{font-size:34px;letter-spacing:2px;line-height:1;color:#f8fafc;font-weight:800}
+h1 span{font-size:13px;font-weight:500;color:#64748b;letter-spacing:1px;display:block;margin-top:6px}
+.scores{display:flex;gap:8px}
+.score-box{
+  position:relative;background:#1e293b;border:1px solid #334155;border-radius:10px;
+  padding:6px 14px;min-width:82px;text-align:center;overflow:visible;
+}
+.score-box .label{font-size:11px;letter-spacing:2px;color:#94a3b8}
+.score-box .value{font-family:Consolas,"Courier New",monospace;font-size:22px;font-weight:800;color:#f1f5f9;line-height:1.2}
+.score-box .value.bump{animation:bump .18s ease}
+@keyframes bump{0%{transform:scale(1)}50%{transform:scale(1.18)}100%{transform:scale(1)}}
+.gain{
+  position:absolute;left:50%;top:2px;transform:translateX(-50%);
+  font-family:Consolas,monospace;font-size:16px;font-weight:800;color:#4ade80;
+  pointer-events:none;animation:gain .7s ease-out forwards;text-shadow:0 0 8px rgba(74,222,128,.5)
+}
+@keyframes gain{0%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,-30px)}}
+.toolbar{width:100%;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;align-items:center;margin-bottom:12px}
+.toolbar button{
+  background:#1e293b;color:#cbd5e1;border:1px solid #334155;padding:8px 18px;
+  border-radius:9px;cursor:pointer;font-size:14px;transition:all .15s;font-family:inherit
+}
+.toolbar button:hover:not(:disabled){background:#2b3a52;border-color:#475569}
+.toolbar button:active:not(:disabled){transform:scale(.96)}
+.toolbar button.primary{background:#2563eb;border-color:#2563eb;color:#fff}
+.toolbar button.primary:hover{background:#1d4ed8;border-color:#1d4ed8}
+.toolbar button:disabled{opacity:.38;cursor:not-allowed}
+.opt{
+  display:flex;align-items:center;gap:7px;font-size:13px;color:#94a3b8;
+  background:#1e293b;border:1px solid #334155;border-radius:9px;padding:0 10px;height:36px
+}
+.opt select{
+  background:transparent;border:none;color:#e2e8f0;font-size:13px;font-family:inherit;
+  cursor:pointer;outline:none;padding:2px 0
+}
+.opt select option{background:#1e293b;color:#e2e8f0}
+.toolbar button.toggle.on{background:#134e4a;border-color:#0d9488;color:#7ee7d5}
+.toolbar button.toggle.on:hover{background:#155e56;border-color:#14b8a6}
+.board-wrap{position:relative}
+.board{
+  position:relative;background:#0f172a;border:1px solid #1e293b;border-radius:14px;
+  padding:var(--pad,10px);box-shadow:0 24px 60px rgba(0,0,0,.5);
+  touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+}
+.cells{display:grid;grid-template-columns:repeat(4,var(--cell,80px));grid-auto-rows:var(--cell,80px);gap:var(--gap,10px)}
+.cell{background:#1e293b;border-radius:7px}
+.tiles{position:absolute;left:0;top:0;right:0;bottom:0}
+.tile{
+  position:absolute;left:0;top:0;width:var(--cell,80px);height:var(--cell,80px);
+  display:flex;align-items:center;justify-content:center;border-radius:7px;
+  font-weight:800;line-height:1;z-index:2;
+  transition:transform 110ms ease-in-out;
+  will-change:transform;
+}
+.tile.merging{z-index:1}
+.tile.appear{animation:appear 140ms ease-out}
+@keyframes appear{0%{opacity:0;transform:scale(.35) translate(var(--tx),var(--ty))}100%{opacity:1}}
+.tile.pop > .inner{animation:pop 170ms ease-out}
+@keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.22)}100%{transform:scale(1)}}
+.tile .inner{display:flex;align-items:center;justify-content:center;width:100%;height:100%}
+.v2{background:#eee4da;color:#776e65}
+.v4{background:#ede0c8;color:#776e65}
+.v8{background:#f2b179;color:#fff}
+.v16{background:#f59563;color:#fff}
+.v32{background:#f67c5f;color:#fff}
+.v64{background:#f65e3b;color:#fff}
+.v128{background:#edcf72;color:#fff;box-shadow:0 0 14px rgba(237,207,114,.35)}
+.v256{background:#edcc61;color:#fff;box-shadow:0 0 16px rgba(237,204,97,.45)}
+.v512{background:#edc850;color:#fff;box-shadow:0 0 18px rgba(237,200,80,.5)}
+.v1024{background:#edc53f;color:#fff;box-shadow:0 0 20px rgba(237,197,63,.55)}
+.v2048{background:#edc22e;color:#fff;box-shadow:0 0 26px rgba(237,194,46,.7)}
+.vsuper{background:#3c3a32;color:#f8fafc;box-shadow:0 0 26px rgba(248,250,252,.35)}
+.hint{width:100%;margin-top:14px;font-size:12.5px;color:#64748b;text-align:center;line-height:1.8}
+.hint kbd{
+  background:#1e293b;border:1px solid #334155;border-bottom-width:2px;border-radius:5px;
+  padding:1px 6px;font-family:Consolas,monospace;color:#cbd5e1;font-size:11.5px
+}
+.overlay{
+  position:absolute;inset:0;border-radius:14px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:16px;text-align:center;
+  background:rgba(15,23,42,.86);backdrop-filter:blur(3px);z-index:50;
+  opacity:0;pointer-events:none;transition:opacity .2s
+}
+.overlay.show{opacity:1;pointer-events:auto}
+.overlay .title{font-size:32px;font-weight:800;letter-spacing:2px}
+.overlay .title.win{color:#edc22e;text-shadow:0 0 24px rgba(237,194,46,.5)}
+.overlay .title.lose{color:#f87171;text-shadow:0 0 24px rgba(248,113,113,.4)}
+.overlay .sub{font-size:14px;color:#94a3b8}
+.overlay .actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.overlay button{
+  background:#2563eb;border:1px solid #2563eb;color:#fff;border-radius:9px;
+  padding:9px 20px;font-size:14px;cursor:pointer;font-family:inherit;transition:all .15s
+}
+.overlay button.ghost{background:transparent;border-color:#475569;color:#cbd5e1}
+.overlay button:hover{filter:brightness(1.12)}
+.overlay button:active{transform:scale(.96)}
+@media (max-width:420px){
+  h1{font-size:28px}
+  .score-box{min-width:70px;padding:5px 10px}
+  .score-box .value{font-size:19px}
+}
+/* 手机矮屏（或横屏）：压缩非棋盘区域，把空间留给棋盘 */
+@media (max-height:720px){
+  h1{font-size:24px}
+  h1 span{display:none}
+  header{margin-bottom:8px}
+  .toolbar{margin-bottom:8px}
+  .toolbar button{padding:7px 13px}
+  .opt{height:33px;padding:0 8px}
+  .hint{display:none}
+}
+@media (max-height:520px){
+  h1{font-size:19px}
+  .hint{display:none}
+}
+</style>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-180.png">
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>2048<span>合并方块，凑出 2048</span></h1>
+    <div class="scores">
+      <div class="score-box"><div class="label">得分</div><div class="value" id="score">0</div></div>
+      <div class="score-box"><div class="label">最高</div><div class="value" id="best">0</div></div>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <button id="btn-new" class="primary">新游戏</button>
+    <button id="btn-undo" disabled>撤销一步</button>
+    <label class="opt" title="每个新方块出现 4（而非 2）的概率">新块含 4
+      <select id="sel-four">
+        <option value="0.1">10%（经典）</option>
+        <option value="0.2">20%</option>
+        <option value="0.3">30%</option>
+        <option value="0.5">50%</option>
+      </select>
+    </label>
+    <button id="btn-music" class="toggle on" aria-pressed="true">🎵 音乐</button>
+    <button id="btn-sfx" class="toggle on" aria-pressed="true">🔔 音效</button>
+  </div>
+
+  <div class="board-wrap">
+    <div class="board" id="board">
+      <div class="cells" id="cells"></div>
+      <div class="tiles" id="tiles"></div>
+      <div class="overlay" id="overlay">
+        <div class="title" id="ov-title">游戏结束</div>
+        <div class="sub" id="ov-sub">没有可移动的方块了</div>
+        <div class="actions" id="ov-actions"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hint">
+    <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 或 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 · 手机可滑动屏幕<br>
+    <kbd>R</kbd> 新游戏 · <kbd>Z</kbd> 撤销
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var SIZE = 4;
+  var SLIDE_MS = 110;      // 滑动动画时长（与 CSS transition 一致）
+  var SWIPE_MIN = 24;      // 滑动判定的最小位移
+  var BEST_KEY = '2048-best-score';
+  var FOUR_KEY = '2048-four-rate';
+  var MUSIC_KEY = '2048-music';
+  var SFX_KEY = '2048-sfx';
+
+  var boardEl = document.getElementById('board');
+  var cellsEl = document.getElementById('cells');
+  var tilesEl = document.getElementById('tiles');
+  var scoreEl = document.getElementById('score');
+  var bestEl = document.getElementById('best');
+  var undoBtn = document.getElementById('btn-undo');
+  var newBtn = document.getElementById('btn-new');
+  var selFour = document.getElementById('sel-four');
+  var btnMusic = document.getElementById('btn-music');
+  var btnSfx = document.getElementById('btn-sfx');
+  var overlayEl = document.getElementById('overlay');
+  var ovTitleEl = document.getElementById('ov-title');
+  var ovSubEl = document.getElementById('ov-sub');
+  var ovActionsEl = document.getElementById('ov-actions');
+
+  var grid = [];           // grid[r][c] = tile | null
+  var tiles = [];          // 全部活动方块
+  var nextId = 1;
+  var score = 0;
+  var best = 0;
+  var fourRate = 0.1;     // 新方块出现 4 的概率
+  var history = [];        // 撤销栈
+  var won = false;         // 是否已达成 2048
+  var keepPlaying = false;
+  var gameOver = false;
+  var animating = false;
+  var pendingDir = null;
+  var cellSize = 80, gap = 10, pad = 10;
+
+  /* ---------- 存储 ---------- */
+  function loadBest() {
+    try {
+      var v = parseInt(window.localStorage.getItem(BEST_KEY), 10);
+      return isNaN(v) ? 0 : v;
+    } catch (e) { return 0; }
+  }
+  function saveBest() {
+    try { window.localStorage.setItem(BEST_KEY, String(best)); } catch (e) {}
+  }
+
+  /* ---------- 新块出 4 的概率（默认经典 10%） ---------- */
+  function loadFourRate() {
+    try {
+      var v = parseFloat(window.localStorage.getItem(FOUR_KEY));
+      if (!isNaN(v) && v >= 0 && v <= 1) return v;
+    } catch (e) {}
+    return 0.1;
+  }
+  function saveFourRate() {
+    try { window.localStorage.setItem(FOUR_KEY, String(fourRate)); } catch (e) {}
+  }
+  function clampRate(v) {
+    if (isNaN(v) || v < 0) return 0;
+    if (v > 1) return 1;
+    return v;
+  }
+  function syncFourSelect() {
+    var want = String(fourRate);
+    var opts = selFour.options || [];
+    for (var i = 0; i < opts.length; i++) {
+      if (opts[i].value === want) { selFour.value = want; return; }
+    }
+  }
+
+  /* ---------- 音频（Web Audio 实时合成，无外部音频文件） ---------- */
+  var MASTER_VOL = 0.5;
+  var MUSIC_VOL = 0.45;
+  var SFX_VOL = 0.8;
+  var BPM = 72;                       // 慢速，不抢注意力
+  var STEPS_PER_BAR = 16;
+  var LOOKAHEAD = 0.2;                // 调度预排时间（秒）
+  var TICK_MS = 25;
+
+  // 和弦进行：Am - F - C - G（四小节循环）
+  var CHORDS = [
+    { root: 110.00, tones: [220.00, 261.63, 329.63] },
+    { root: 87.31, tones: [174.61, 220.00, 261.63] },
+    { root: 130.81, tones: [261.63, 329.63, 392.00] },
+    { root: 98.00, tones: [196.00, 246.94, 293.66] }
+  ];
+  // 每小节 16 个十六分音符的琶音谱：-1 休止，0/1/2 为和弦音，3 为高八度根音
+  var ARP = [
+    [0, -1, -1, 1, -1, -1, 2, -1, 1, -1, -1, 2, -1, 3, -1, -1],
+    [2, -1, -1, 0, -1, -1, 1, -1, -1, 2, -1, -1, 3, -1, 1, -1],
+    [1, -1, -1, 2, -1, -1, 3, -1, 2, -1, -1, 1, -1, 0, -1, -1],
+    [0, -1, -1, 2, -1, 1, -1, 2, -1, -1, 3, -1, -1, 1, -1, -1]
+  ];
+
+  var audio = {
+    ctx: null, master: null, musicBus: null, sfxBus: null,
+    timer: null, step: 0, nextTime: 0, musicOn: true, sfxOn: true, armed: false
+  };
+
+  function loadAudioPrefs() {
+    try {
+      var m = window.localStorage.getItem(MUSIC_KEY);
+      var s = window.localStorage.getItem(SFX_KEY);
+      if (m !== null) audio.musicOn = (m !== '0');
+      if (s !== null) audio.sfxOn = (s !== '0');
+    } catch (e) {}
+  }
+  function saveAudioPrefs() {
+    try {
+      window.localStorage.setItem(MUSIC_KEY, audio.musicOn ? '1' : '0');
+      window.localStorage.setItem(SFX_KEY, audio.sfxOn ? '1' : '0');
+    } catch (e) {}
+  }
+  function audioNow() { return audio.ctx ? audio.ctx.currentTime : 0; }
+
+  function ensureAudio() {
+    if (audio.ctx) return true;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return false;
+    try {
+      audio.ctx = new AC();
+      audio.master = audio.ctx.createGain();
+      audio.master.gain.value = MASTER_VOL;
+      audio.master.connect(audio.ctx.destination);
+      audio.musicBus = audio.ctx.createGain();
+      audio.musicBus.gain.value = 0.0001;
+      audio.musicBus.connect(audio.master);
+      audio.sfxBus = audio.ctx.createGain();
+      audio.sfxBus.gain.value = audio.sfxOn ? SFX_VOL : 0.0001;
+      audio.sfxBus.connect(audio.master);
+    } catch (e) {
+      audio.ctx = null;
+      return false;
+    }
+    return true;
+  }
+
+  function fadeTo(bus, vol, sec) {
+    if (!bus || !audio.ctx) return;
+    var t = audioNow();
+    bus.gain.cancelScheduledValues(t);
+    bus.gain.setValueAtTime(bus.gain.value, t);
+    bus.gain.linearRampToValueAtTime(vol, t + sec);
+  }
+
+  // 一个带包络的音符
+  function tone(freq, time, dur, type, peak, bus, attack) {
+    var ctx = audio.ctx;
+    if (!ctx || !isFinite(freq) || freq <= 0) return;
+    var t = (time === undefined) ? ctx.currentTime : time;
+    if (t < ctx.currentTime) t = ctx.currentTime;        // 不排到过去
+    var osc = ctx.createOscillator();
+    var g = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + (attack || 0.01));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g);
+    g.connect(bus || audio.master);
+    osc.start(t);
+    osc.stop(t + dur + 0.05);
+  }
+
+  function scheduleStep(step, time) {
+    var sd = 60 / BPM / 4;                               // 十六分音符时长
+    var bar = Math.floor(step / STEPS_PER_BAR) % CHORDS.length;
+    var sub = step % STEPS_PER_BAR;
+    var chord = CHORDS[bar];
+    var i;
+
+    if (sub === 0) {
+      for (i = 0; i < chord.tones.length; i++) {
+        tone(chord.tones[i], time, sd * 15, 'sine', 0.10, audio.musicBus, 1.2);        // 长铺底
+      }
+      tone(chord.root, time, sd * 3.4, 'triangle', 0.20, audio.musicBus, 0.03);        // 低音
+    } else if (sub === 8) {
+      tone(chord.root, time, sd * 2.2, 'triangle', 0.14, audio.musicBus, 0.02);
+    } else if (sub === 12) {
+      tone(chord.root * 0.75, time, sd * 1.6, 'triangle', 0.10, audio.musicBus, 0.02);
+    }
+
+    var n = ARP[bar][sub];
+    if (n >= 0) {
+      tone(n === 3 ? chord.tones[0] * 2 : chord.tones[n], time, sd * 1.7, 'sine', 0.14, audio.musicBus, 0.008);
+    }
+  }
+
+  function musicTick() {
+    if (!audio.ctx || !audio.musicOn || audio.ctx.state !== 'running') return;
+    var now = audio.ctx.currentTime;
+    if (audio.nextTime < now) audio.nextTime = now + 0.05;
+    var guard = 0;
+    while (audio.nextTime < now + LOOKAHEAD && guard++ < 64) {
+      scheduleStep(audio.step, audio.nextTime);
+      audio.nextTime += 60 / BPM / 4;
+      audio.step = (audio.step + 1) % (STEPS_PER_BAR * CHORDS.length);
+    }
+  }
+
+  function startMusic() {
+    if (!audio.ctx || audio.timer) return;
+    audio.step = 0;
+    audio.nextTime = audio.ctx.currentTime + 0.08;
+    audio.timer = window.setInterval(musicTick, TICK_MS);
+    musicTick();
+  }
+  function stopMusic() {
+    if (audio.timer) { window.clearInterval(audio.timer); audio.timer = null; }
+  }
+
+  function unlockAudio() {
+    if (!ensureAudio()) return false;
+    if (audio.ctx.state === 'suspended' && audio.ctx.resume) audio.ctx.resume();
+    if (audio.musicOn && !audio.timer) {
+      fadeTo(audio.musicBus, MUSIC_VOL, 0.8);
+      startMusic();
+    }
+    return true;
+  }
+
+  // 浏览器要求先有用户手势，音频才允许出声
+  function armAudio() {
+    if (audio.armed) return;
+    audio.armed = true;
+    var onGesture = function () {
+      if (audio.musicOn || audio.sfxOn) unlockAudio();
+    };
+    window.addEventListener('pointerdown', onGesture, { once: true });
+    window.addEventListener('keydown', onGesture, { once: true });
+    window.addEventListener('touchstart', onGesture, { once: true });
+  }
+
+  function syncAudioUI() {
+    if (btnMusic) {
+      btnMusic.textContent = audio.musicOn ? '🎵 音乐' : '🔇 音乐';
+      btnMusic.className = audio.musicOn ? 'toggle on' : 'toggle';
+      if (btnMusic.setAttribute) btnMusic.setAttribute('aria-pressed', audio.musicOn ? 'true' : 'false');
+    }
+    if (btnSfx) {
+      btnSfx.textContent = audio.sfxOn ? '🔔 音效' : '🔕 音效';
+      btnSfx.className = audio.sfxOn ? 'toggle on' : 'toggle';
+      if (btnSfx.setAttribute) btnSfx.setAttribute('aria-pressed', audio.sfxOn ? 'true' : 'false');
+    }
+  }
+
+  function setMusic(on, persist) {
+    audio.musicOn = !!on;
+    if (persist !== false) saveAudioPrefs();
+    syncAudioUI();
+    if (audio.musicOn) {
+      if (audio.ctx) { fadeTo(audio.musicBus, MUSIC_VOL, 0.8); startMusic(); }
+    } else {
+      fadeTo(audio.musicBus, 0.0001, 0.35);
+      window.setTimeout(function () { if (!audio.musicOn) stopMusic(); }, 400);
+    }
+  }
+  function setSfx(on, persist) {
+    audio.sfxOn = !!on;
+    if (persist !== false) saveAudioPrefs();
+    syncAudioUI();
+    fadeTo(audio.sfxBus, audio.sfxOn ? SFX_VOL : 0.0001, 0.2);
+  }
+
+  /* 音效：移动、合并（数值越大音越高）、胜利、终局 */
+  function sfxMove() {
+    if (!audio.ctx || !audio.sfxOn) return;
+    tone(330, audioNow(), 0.06, 'sine', 0.045, audio.sfxBus, 0.004);
+  }
+  function sfxMerge(value) {
+    if (!audio.ctx || !audio.sfxOn) return;
+    var steps = Math.log(Math.max(2, value)) / Math.LN2;      // 2→1, 4→2, 8→3 …
+    var f = 190 * Math.pow(1.14, Math.max(0, steps - 1));
+    if (f > 1200) f = 1200;
+    var t = audioNow();
+    tone(f, t, 0.11, 'triangle', 0.10, audio.sfxBus, 0.005);
+    tone(f * 1.5, t + 0.05, 0.16, 'sine', 0.07, audio.sfxBus, 0.005);
+  }
+  function sfxWin() {
+    haptic([14, 45, 14, 45, 40]);
+    if (!audio.ctx || !audio.sfxOn) return;
+    var t = audioNow(), seq = [523.25, 659.25, 783.99, 1046.50];
+    for (var i = 0; i < seq.length; i++) tone(seq[i], t + i * 0.11, 0.5, 'sine', 0.09, audio.sfxBus, 0.01);
+  }
+  function sfxOver() {
+    haptic(70);
+    if (!audio.ctx || !audio.sfxOn) return;
+    var t = audioNow(), seq = [392.00, 329.63, 261.63, 196.00];
+    for (var i = 0; i < seq.length; i++) tone(seq[i], t + i * 0.16, 0.85, 'triangle', 0.10, audio.sfxBus, 0.02);
+  }
+  /* 震动反馈（Android 支持；iOS Safari 无此 API，静默跳过） */
+  function haptic(pattern) {
+    var nav = window.navigator;
+    if (!nav || !nav.vibrate || !audio.sfxOn) return;
+    try { nav.vibrate(pattern); } catch (e) {}
+  }
+
+  function playMoveSound(merges) {
+    if (!merges || !merges.length) { sfxMove(); return; }
+    var max = 0;
+    for (var i = 0; i < merges.length; i++) if (merges[i].value > max) max = merges[i].value;
+    sfxMerge(max);
+    haptic(max >= 128 ? 18 : 10);
+  }
+
+  /* ---------- 布局 ---------- */
+  function layout() {
+    // 同时受宽、高限制：横屏或矮屏时也要保证棋盘完整可见
+    var vh = window.innerHeight || 800;
+    var byWidth = (window.innerWidth || 400) - 36;
+    var byHeight = vh - (vh < 560 ? 150 : 232);   // 让出标题/工具栏/提示所占高度
+    var avail = Math.min(byWidth, byHeight, 440);
+    var size = Math.max(200, Math.round(avail));
+    gap = Math.max(6, Math.round(size * 0.026));
+    pad = gap;
+    cellSize = Math.floor((size - 2 * pad - 3 * gap) / SIZE);
+    var total = cellSize * SIZE + gap * 3 + pad * 2;
+
+    boardEl.style.width = total + 'px';
+    boardEl.style.height = total + 'px';
+    boardEl.style.setProperty('--cell', cellSize + 'px');
+    boardEl.style.setProperty('--gap', gap + 'px');
+    boardEl.style.setProperty('--pad', pad + 'px');
+  }
+
+  function slotPos(r, c) {
+    var step = cellSize + gap;
+    return { x: pad + c * step, y: pad + r * step, step: step };
+  }
+
+  function place(el, r, c, instant) {
+    var p = slotPos(r, c);
+    if (instant) el.style.transition = 'none';
+    el.style.transform = 'translate(' + p.x + 'px,' + p.y + 'px)';
+    if (instant) {
+      // 强制回流后再恢复过渡，避免“瞬移”被动画化
+      void el.offsetWidth;
+      el.style.transition = '';
+    }
+  }
+
+  function fontFor(value) {
+    var digits = String(value).length;
+    if (digits <= 2) return 0.45;
+    if (digits === 3) return 0.37;
+    if (digits === 4) return 0.30;
+    if (digits === 5) return 0.24;
+    return 0.19;
+  }
+
+  function colorClass(value) {
+    return value > 2048 ? 'vsuper' : 'v' + value;
+  }
+
+  /* ---------- 方块 ---------- */
+  function makeEl(tile) {
+    var el = document.createElement('div');
+    el.className = 'tile ' + colorClass(tile.value);
+    el.style.fontSize = Math.round(cellSize * fontFor(tile.value)) + 'px';
+    var inner = document.createElement('div');
+    inner.className = 'inner';
+    inner.textContent = tile.value;
+    el.appendChild(inner);
+    tile.el = el;
+    tile.inner = inner;
+    return el;
+  }
+
+  function setTileValue(tile, value) {
+    tile.value = value;
+    tile.el.className = 'tile ' + colorClass(value);
+    tile.el.style.fontSize = Math.round(cellSize * fontFor(value)) + 'px';
+    tile.inner.textContent = value;
+  }
+
+  function applyScale() {
+    for (var i = 0; i < tiles.length; i++) {
+      var t = tiles[i];
+      t.el.style.width = cellSize + 'px';
+      t.el.style.height = cellSize + 'px';
+      t.el.style.fontSize = Math.round(cellSize * fontFor(t.value)) + 'px';
+      place(t.el, t.r, t.c, true);
+    }
+  }
+
+  function addTile(r, c, value, animate) {
+    var tile = { id: nextId++, value: value, r: r, c: c, el: null, inner: null };
+    grid[r][c] = tile;
+    tiles.push(tile);
+    var el = makeEl(tile);
+    var p = slotPos(r, c);
+    el.style.setProperty('--tx', p.x + 'px');
+    el.style.setProperty('--ty', p.y + 'px');
+    place(el, r, c, true);
+    if (animate) el.classList.add('appear');
+    tilesEl.appendChild(el);
+    return tile;
+  }
+
+  function emptyCells() {
+    var out = [];
+    for (var r = 0; r < SIZE; r++) {
+      for (var c = 0; c < SIZE; c++) {
+        if (!grid[r][c]) out.push({ r: r, c: c });
+      }
+    }
+    return out;
+  }
+
+  function spawnRandom() {
+    var cells = emptyCells();
+    if (!cells.length) return null;
+    var pick = cells[Math.floor(Math.random() * cells.length)];
+    return addTile(pick.r, pick.c, Math.random() < fourRate ? 4 : 2, true);
+  }
+
+  function clearTiles() {
+    tilesEl.innerHTML = '';
+  }
+
+  /* ---------- 状态 ---------- */
+  function updateScore(gain) {
+    scoreEl.textContent = score;
+    if (gain) {
+      scoreEl.classList.remove('bump');
+      void scoreEl.offsetWidth;
+      scoreEl.classList.add('bump');
+    }
+    if (score > best) { best = score; saveBest(); }
+    bestEl.textContent = best;
+    if (gain) {
+      var g = document.createElement('div');
+      g.className = 'gain';
+      g.textContent = '+' + gain;
+      scoreEl.parentNode.appendChild(g);
+      setTimeout(function () { if (g.parentNode) g.parentNode.removeChild(g); }, 700);
+    }
+  }
+
+  function updateUndoBtn() {
+    undoBtn.disabled = history.length === 0;
+  }
+
+  function snapshot() {
+    var cells = [];
+    for (var r = 0; r < SIZE; r++) {
+      cells.push([]);
+      for (var c = 0; c < SIZE; c++) {
+        cells[r].push(grid[r][c] ? grid[r][c].value : 0);
+      }
+    }
+    return { cells: cells, score: score, won: won, keepPlaying: keepPlaying };
+  }
+
+  function restore(snap) {
+    clearTiles();
+    tiles = [];
+    grid = [];
+    for (var r = 0; r < SIZE; r++) {
+      grid.push([]);
+      for (var c = 0; c < SIZE; c++) grid[r].push(null);
+    }
+    for (var rr = 0; rr < SIZE; rr++) {
+      for (var cc = 0; cc < SIZE; cc++) {
+        var v = snap.cells[rr][cc];
+        if (v) addTile(rr, cc, v, false);
+      }
+    }
+    score = snap.score;
+    won = snap.won;
+    keepPlaying = snap.keepPlaying;
+    gameOver = false;
+    scoreEl.textContent = score;
+    hideOverlay();
+  }
+
+  function hideOverlay() {
+    overlayEl.classList.remove('show');
+    ovActionsEl.innerHTML = '';
+  }
+
+  function showOverlay(kind) {
+    if (kind === 'win') {
+      ovTitleEl.className = 'title win';
+      ovTitleEl.textContent = '达成 2048！';
+      ovSubEl.textContent = '当前得分 ' + score + '，还能走多远？';
+      ovActionsEl.innerHTML = '';
+      ovActionsEl.appendChild(mkBtn('继续挑战', function () { keepPlaying = true; hideOverlay(); }));
+      ovActionsEl.appendChild(mkBtn('再来一局', function () { newGame(); }, true));
+    } else {
+      ovTitleEl.className = 'title lose';
+      ovTitleEl.textContent = '游戏结束';
+      ovSubEl.textContent = '没有可移动的方块了 · 最终得分 ' + score;
+      ovActionsEl.innerHTML = '';
+      ovActionsEl.appendChild(mkBtn('重新开始', function () { newGame(); }));
+      if (history.length) {
+        ovActionsEl.appendChild(mkBtn('撤销一步', function () {
+          hideOverlay();
+          undo();
+        }, true));
+      }
+    }
+    overlayEl.classList.add('show');
+  }
+
+  function mkBtn(text, handler, ghost) {
+    var b = document.createElement('button');
+    b.textContent = text;
+    if (ghost) b.className = 'ghost';
+    b.addEventListener('click', handler);
+    return b;
+  }
+
+  /* ---------- 移动 ---------- */
+  var VECTORS = {
+    up: { r: -1, c: 0 },
+    down: { r: 1, c: 0 },
+    left: { r: 0, c: -1 },
+    right: { r: 0, c: 1 }
+  };
+
+  function traversals(v) {
+    var rows = [], cols = [], i;
+    for (i = 0; i < SIZE; i++) { rows.push(i); cols.push(i); }
+    if (v.r === 1) rows.reverse();
+    if (v.c === 1) cols.reverse();
+    return { rows: rows, cols: cols };
+  }
+
+  function farthest(r, c, v) {
+    var pr = r, pc = c;
+    var nr = r + v.r, nc = c + v.c;
+    while (nr >= 0 && nr < SIZE && nc >= 0 && nc < SIZE && !grid[nr][nc]) {
+      pr = nr; pc = nc;
+      nr += v.r; nc += v.c;
+    }
+    return {
+      far: { r: pr, c: pc },
+      next: (nr >= 0 && nr < SIZE && nc >= 0 && nc < SIZE) ? { r: nr, c: nc } : null
+    };
+  }
+
+  function input(dir) {
+    if (gameOver) return;
+    if (overlayEl.classList.contains('show') && !keepPlaying) return;
+    if (animating) { pendingDir = dir; return; }
+    doMove(dir);
+  }
+
+  function doMove(dir) {
+    var v = VECTORS[dir];
+    if (!v) return;
+    var trav = traversals(v);
+    var moved = false;
+    var gained = 0;
+    var removals = [];
+    var merges = [];
+    var r, c, i;
+
+    // 快照必须在棋盘被改写之前拍，否则撤销无法回到上一步
+    var snap = snapshot();
+
+    for (i = 0; i < tiles.length; i++) tiles[i].merged = false;
+
+    for (var ri = 0; ri < SIZE; ri++) {
+      for (var ci = 0; ci < SIZE; ci++) {
+        r = trav.rows[ri];
+        c = trav.cols[ci];
+        var tile = grid[r][c];
+        if (!tile) continue;
+
+        var res = farthest(r, c, v);
+        var nextTile = res.next ? grid[res.next.r][res.next.c] : null;
+
+        if (nextTile && nextTile.value === tile.value && !nextTile.merged) {
+          grid[r][c] = null;
+          tile.r = nextTile.r;
+          tile.c = nextTile.c;
+          nextTile.merged = true;
+          nextTile.value *= 2;
+          gained += nextTile.value;
+          removals.push(tile);
+          merges.push(nextTile);
+          moved = true;
+        } else if (res.far.r !== r || res.far.c !== c) {
+          grid[r][c] = null;
+          grid[res.far.r][res.far.c] = tile;
+          tile.r = res.far.r;
+          tile.c = res.far.c;
+          moved = true;
+        }
+      }
+    }
+
+    if (!moved) {
+      // 没有任何变化：检查是否已无路可走
+      if (!hasMoves()) endGame();
+      return;
+    }
+
+    history.push(snap);
+    if (history.length > 60) history.shift();
+    updateUndoBtn();
+
+    if (gained) { score += gained; }
+    updateScore(gained);
+    playMoveSound(merges);
+
+    for (i = 0; i < tiles.length; i++) place(tiles[i].el, tiles[i].r, tiles[i].c, false);
+    for (i = 0; i < removals.length; i++) removals[i].el.classList.add('merging');
+
+    animating = true;
+    window.setTimeout(function () { finishMove(removals, merges); }, SLIDE_MS);
+  }
+
+  function finishMove(removals, merges) {
+    var i;
+    for (i = 0; i < removals.length; i++) {
+      var dead = removals[i];
+      if (dead.el.parentNode) dead.el.parentNode.removeChild(dead.el);
+      var idx = tiles.indexOf(dead);
+      if (idx >= 0) tiles.splice(idx, 1);
+    }
+    for (i = 0; i < merges.length; i++) {
+      var t = merges[i];
+      t.merged = false;
+      setTileValue(t, t.value);
+      place(t.el, t.r, t.c, false);
+      t.el.classList.remove('pop');
+      void t.el.offsetWidth;
+      t.el.classList.add('pop');
+    }
+    for (i = 0; i < tiles.length; i++) tiles[i].el.classList.remove('appear');
+
+    spawnRandom();
+
+    if (!won && findValue(2048)) {
+      won = true;
+      if (!keepPlaying) {
+        animating = false;
+        sfxWin();
+        showOverlay('win');
+        flushPending();
+        return;
+      }
+    }
+    if (!hasMoves()) endGame();
+
+    animating = false;
+    flushPending();
+  }
+
+  function flushPending() {
+    if (pendingDir) {
+      var d = pendingDir;
+      pendingDir = null;
+      doMove(d);
+    }
+  }
+
+  function findValue(value) {
+    for (var i = 0; i < tiles.length; i++) {
+      if (tiles[i].value === value) return true;
+    }
+    return false;
+  }
+
+  function hasMoves() {
+    if (emptyCells().length) return true;
+    for (var r = 0; r < SIZE; r++) {
+      for (var c = 0; c < SIZE; c++) {
+        var t = grid[r][c];
+        if (!t) return true;
+        var right = c + 1 < SIZE ? grid[r][c + 1] : null;
+        var down = r + 1 < SIZE ? grid[r + 1][c] : null;
+        if (right && right.value === t.value) return true;
+        if (down && down.value === t.value) return true;
+      }
+    }
+    return false;
+  }
+
+  function endGame() {
+    gameOver = true;
+    sfxOver();
+    showOverlay('lose');
+  }
+
+  /* ---------- 撤销 ---------- */
+  function undo() {
+    if (!history.length || animating) return;
+    var snap = history.pop();
+    restore(snap);
+    updateUndoBtn();
+  }
+
+  /* ---------- 新游戏 ---------- */
+  function newGame() {
+    clearTiles();
+    tiles = [];
+    grid = [];
+    for (var r = 0; r < SIZE; r++) {
+      grid.push([]);
+      for (var c = 0; c < SIZE; c++) grid[r].push(null);
+    }
+    score = 0;
+    won = false;
+    keepPlaying = false;
+    gameOver = false;
+    animating = false;
+    pendingDir = null;
+    history = [];
+    scoreEl.textContent = '0';
+    bestEl.textContent = best;
+    updateUndoBtn();
+    hideOverlay();
+    spawnRandom();
+    spawnRandom();
+  }
+
+  /* ---------- 初始化 ---------- */
+  function buildCells() {
+    cellsEl.innerHTML = '';
+    for (var i = 0; i < SIZE * SIZE; i++) {
+      var d = document.createElement('div');
+      d.className = 'cell';
+      cellsEl.appendChild(d);
+    }
+  }
+
+  var KEYS = {
+    ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+    w: 'up', a: 'left', s: 'down', d: 'right',
+    W: 'up', A: 'left', S: 'down', D: 'right'
+  };
+
+  window.addEventListener('keydown', function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var dir = KEYS[e.key];
+    if (dir) {
+      e.preventDefault();
+      input(dir);
+      return;
+    }
+    if (e.key === 'r' || e.key === 'R') { e.preventDefault(); newGame(); }
+    else if (e.key === 'z' || e.key === 'Z') { e.preventDefault(); undo(); }
+  }, { passive: false });
+
+  var touchStart = null;
+  boardEl.addEventListener('touchstart', function (e) {
+    if (e.touches.length !== 1) { touchStart = null; return; }
+    touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }, { passive: true });
+
+  boardEl.addEventListener('touchmove', function (e) {
+    if (touchStart && e.cancelable) e.preventDefault();
+  }, { passive: false });
+
+  boardEl.addEventListener('touchend', function (e) {
+    if (!touchStart) return;
+    var t = e.changedTouches[0];
+    var dx = t.clientX - touchStart.x;
+    var dy = t.clientY - touchStart.y;
+    touchStart = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE_MIN) return;
+    if (Math.abs(dx) > Math.abs(dy)) input(dx > 0 ? 'right' : 'left');
+    else input(dy > 0 ? 'down' : 'up');
+  }, { passive: true });
+
+  newBtn.addEventListener('click', newGame);
+  undoBtn.addEventListener('click', undo);
+  selFour.addEventListener('change', function () {
+    fourRate = clampRate(parseFloat(selFour.value));
+    saveFourRate();
+    syncFourSelect();
+  });
+  btnMusic.addEventListener('click', function () {
+    var next = !audio.musicOn;
+    if (next) unlockAudio();          // 点击本身就是一次用户手势
+    setMusic(next);
+  });
+  btnSfx.addEventListener('click', function () {
+    var next = !audio.sfxOn;
+    if (next) unlockAudio();
+    setSfx(next);
+  });
+  // 切到后台就静音，回来再续
+  document.addEventListener('visibilitychange', function () {
+    if (!audio.ctx) return;
+    if (document.hidden) {
+      if (audio.ctx.suspend) audio.ctx.suspend();
+    } else if (audio.musicOn) {
+      if (audio.ctx.resume) audio.ctx.resume();
+    }
+  });
+
+  var resizeTimer = null;
+  window.addEventListener('resize', function () {
+    if (resizeTimer) window.clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(function () {
+      layout();
+      applyScale();
+    }, 80);
+  });
+
+  best = loadBest();
+  fourRate = loadFourRate();
+  loadAudioPrefs();
+  syncFourSelect();
+  syncAudioUI();
+  armAudio();
+  layout();
+  buildCells();
+  newGame();
+
+  // 供人工/自动化调试使用
+  window.__g2048 = {
+    state: function () {
+      return {
+        score: score, best: best, over: gameOver, won: won, fourRate: fourRate,
+        grid: grid.map(function (row) {
+          return row.map(function (t) { return t ? t.value : 0; });
+        })
+      };
+    },
+    move: input, undo: undo, restart: newGame, layout: layout,
+    audio: function () {
+      return {
+        available: !!audio.ctx,
+        state: audio.ctx ? audio.ctx.state : 'none',
+        musicOn: audio.musicOn,
+        sfxOn: audio.sfxOn,
+        musicGain: audio.musicBus ? audio.musicBus.gain.value : 0,
+        scheduling: !!audio.timer
+      };
+    }
+  };
+})();
+</script>
+<script>
+/* PWA：注册 Service Worker（file:// 打开或环境不支持时自动跳过，不影响游戏） */
+(function () {
+  try {
+    var nav = window.navigator, loc = window.location;
+    if (!nav || !nav.serviceWorker || !loc || !loc.protocol || loc.protocol.indexOf('http') !== 0) return;
+    window.addEventListener('load', function () {
+      nav.serviceWorker.register('sw.js').catch(function () {});
+    });
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>

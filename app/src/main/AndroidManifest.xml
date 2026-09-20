@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!-- 仅此一项权限：让 navigator.vibrate 生效（合并方块时的震动反馈）。
+       属于普通权限，安装时不会弹窗询问；不需要网络权限，因为游戏完全内置。 -->
+  <uses-permission android:name="android.permission.VIBRATE" />
+
+  <application
+    android:allowBackup="false"
+    android:hardwareAccelerated="true"
+    android:icon="@mipmap/ic_launcher"
+    android:roundIcon="@mipmap/ic_launcher_round"
+    android:label="@string/app_name"
+    android:supportsRtl="true"
+    android:usesCleartextTraffic="false">
+
+    <activity
+      android:name=".MainActivity"
+      android:exported="true"
+      android:label="@string/app_name"
+      android:launchMode="singleTop"
+      android:theme="@style/AppTheme"
+      android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|uiMode">
+      <!-- 不锁方向：旋转屏幕时 Activity 不重建，页面自己做响应式重排，
+           这样正在进行的棋局不会因为转屏而丢失 -->
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>

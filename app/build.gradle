@@ -1,0 +1,65 @@
+plugins {
+  id 'com.android.application'
+}
+
+android {
+  namespace 'com.dsh.game2048'
+  compileSdk 34
+
+  defaultConfig {
+    applicationId 'com.dsh.game2048'
+    minSdk 26            // Android 8.0+：只有 26+ 才需要自适应图标，也就不必再塞多套 PNG
+    targetSdk 34
+    versionCode 1
+    versionName '1.0'
+  }
+
+  // 有 keystore.properties 就用正式签名，没有就回退到 debug 签名，
+  // 保证第一次构建一定能产出可安装的 APK。
+  signingConfigs {
+    release {
+      def kp = rootProject.file('keystore.properties')
+      if (kp.exists()) {
+        def props = new Properties()
+        kp.withInputStream { props.load(it) }
+        storeFile rootProject.file(props['storeFile'])
+        storePassword props['storePassword']
+        keyAlias props['keyAlias']
+        keyPassword props['keyPassword']
+      }
+    }
+  }
+
+  buildTypes {
+    release {
+      minifyEnabled false        // 代码量极小，不值得为省几十 KB 引入混淆风险
+      shrinkResources false
+      signingConfig signingConfigs.release.storeFile != null ? signingConfigs.release : signingConfigs.debug
+    }
+    debug {
+      // 保留默认可调试设置：可以用 chrome://inspect 直接调试内置页面
+    }
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  packaging {
+    resources {
+      excludes += [
+        'META-INF/*.version',
+        'META-INF/*.kotlin_module',
+        'META-INF/DEPENDENCIES',
+        'META-INF/LICENSE*',
+        'META-INF/NOTICE*'
+      ]
+    }
+  }
+}
+
+// 没有任何第三方依赖：不需要 AndroidX、不需要 Capacitor，
+// 首次构建因此只需下载 AGP 及其构建工具链，下载量小、版本冲突面也小。
+dependencies {
+}
