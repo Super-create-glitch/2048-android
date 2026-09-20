@@ -1,0 +1,130 @@
+# 在 GitHub 的服务器上构建 APK（本机不用装 JDK / Android SDK，也不占用本机磁盘和内存）
+#
+# 用法：
+#   1. 新建一个 GitHub 仓库，把本目录（android 文件夹里的所有内容）作为仓库根目录推上去
+#      没有 git 也可以用网页版：New repository → uploading an existing file → 把整个文件夹拖进去
+#   2. 推上去后 Actions 会自动开始构建；也可以到 Actions 页面点 "Run workflow" 手动触发
+#   3. 构建完成后在该次运行的 Artifacts 里下载 2048-apk（里面的 APK 可直接装到手机）
+#
+# 想要正式签名的 release 包，就在仓库 Settings → Secrets and variables → Actions 里加：
+#   KEYSTORE_BASE64   keystore 文件的 base64
+#   KEYSTORE_PASSWORD、KEY_ALIAS、KEY_PASSWORD
+# 没配这几个 secret 时，只构建 debug 包（同样可以正常安装使用）。
+
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # 注意：secrets 不能直接写在 if: 里，必须先落到 job 级环境变量（GitHub Actions 的限制）
+    env:
+      HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: 安装 SDK 组件
+        run: sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      # 万一 setup-gradle 没把 gradle 放进 PATH，就自己下载一份，避免构建莫名失败
+      - name: 确保 Gradle 可用
+        run: |
+          if ! command -v gradle >/dev/null 2>&1; then
+            echo "PATH 里没有 gradle，改为手动下载 8.7"
+            curl -sSL -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.7-bin.zip
+            unzip -q /tmp/gradle.zip -d /opt
+            echo "/opt/gradle-8.7/bin" >> "$GITHUB_PATH"
+          fi
+          export PATH="$PATH:/opt/gradle-8.7/bin"
+          gradle --version
+
+      - name: 环境信息
+        run: |
+          java -version 2>&1 | head -3
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "node $(node --version)"
+
+      # 万一把本机的 local.properties（里面是 Windows 路径）一起传上来了，会让 Gradle 找不到 SDK，先删掉
+      - name: 清理本机残留配置
+        run: rm -f local.properties
+
+      - name: 检查内置网页是否齐全
+        run: |
+          test -f app/src/main/assets/www/index.html || { echo "缺少内置网页 app/src/main/assets/www/index.html"; exit 1; }
+          ls -l app/src/main/assets/www/
+
+      - name: ZIP 库自测
+        run: node tools/test-ziplib.js
+
+      - name: 静态检查资源引用与类名
+        run: node tools/check-resources.js
+
+      - name: 生成图标（矢量，可重复生成）
+        run: node tools/gen-icon.js
+
+      - name: 静态检查（图标生成后再确认一次）
+        run: node tools/check-resources.js
+
+      - name: 构建 debug 包
+        run: gradle assembleDebug --no-daemon --console=plain
+
+      - name: 准备正式签名（仅当配置了 KEYSTORE_BASE64）
+        if: env.HAS_KEYSTORE == 'true'
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.jks
+          cat > keystore.properties <<EOF
+          storeFile=release.jks
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          EOF
+          echo "已写入 keystore.properties"
+
+      - name: 构建 release 包
+        if: env.HAS_KEYSTORE == 'true'
+        run: gradle assembleRelease --no-daemon --console=plain
+
+      - name: 校验 APK（ZIP 完整性、内置网页一致性、清单、签名）
+        # 这个校验器是自研的、第一次跑真实 APK，万一它自己有 bug，不该让你拿不到包：
+        # 失败只标红不中断，日志照样完整打印；下面的 aapt2/apksigner 交叉核对仍然会硬性把关。
+        continue-on-error: true
+        run: |
+          for apk in $(find app/build/outputs/apk -name '*.apk' | sort); do
+            echo "===== 校验 $apk ====="
+            node tools/verify_apk.js "$apk"
+          done
+
+      - name: 用 aapt2 / apksigner 交叉核对
+        run: |
+          for apk in $(find app/build/outputs/apk -name '*.apk' | sort); do
+            echo "===== $apk ====="
+            "$ANDROID_HOME/build-tools/34.0.0/aapt2" dump badging "$apk" | head -20
+            "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs -v "$apk" | head -20
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 2048-apk
+          path: app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 30
